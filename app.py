@@ -5,12 +5,11 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID", 0))
-BIRD_BOT_LINK = "https://t.me/bird_nest_house_bot"  # your existing sales bot
+BIRD_BOT_LINK = "https://t.me/bird_nest_house_bot"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Global mode
 CURRENT_MODE = "business"
 user_state = {}
 
@@ -40,12 +39,9 @@ def change_mode(message):
 def get_my_id(message):
     bot.reply_to(message, f"Your chat ID: `{message.chat.id}`", parse_mode="Markdown")
 
-# ---------- Incoming messages (profile automation) ----------
-@bot.message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text', 'photo', 'document', 'video', 'voice'])
-def handle_incoming(message):
+# ---------- Helper function: process any incoming message ----------
+def process_message(message):
     uid = message.chat.id
-
-    # If mid-wholesale form
     if uid in user_state:
         handle_wholesale_step(message)
         return
@@ -53,7 +49,7 @@ def handle_incoming(message):
     if CURRENT_MODE == "business":
         bot.send_message(
             uid,
-            "👋 *Welcome to [Phearun]’s Bird’s Nest Shop!*\n\n"
+            "👋 *Welcome to [Your Name]’s Bird’s Nest Shop!*\n\n"
             "I’m an automated assistant. How can I help you today?",
             parse_mode="Markdown",
             reply_markup=business_keyboard()
@@ -65,30 +61,35 @@ def handle_incoming(message):
             "If it’s urgent, send a 🔥 and I’ll be notified."
         )
 
-# ---------- Callback buttons ----------
+# ---------- Handler for normal private messages ----------
+@bot.message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
+def handle_normal_message(message):
+    process_message(message)
+
+# ---------- Handler for messages from your profile (Secretary Mode) ----------
+@bot.business_message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
+def handle_business_message(message):
+    process_message(message)
+
+# ---------- Callback button handler ----------
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     uid = call.message.chat.id
-
     if call.data == "learn":
         bot.send_message(
             uid,
             "🍃 *Edible Bird’s Nest* is a premium superfood known for:\n"
-            "• Boosting immunity\n"
-            "• Improving skin complexion\n"
-            "• Supporting respiratory health\n\n"
+            "• Boosting immunity\n• Improving skin complexion\n• Supporting respiratory health\n\n"
             "All our nests are 100% natural, hand‑cleaned, and sourced sustainably.\n"
             "Ready to try? Tap *Buy Now* to visit our shop!",
             parse_mode="Markdown",
             reply_markup=business_keyboard()
         )
         bot.answer_callback_query(call.id)
-
     elif call.data == "wholesale":
         user_state[uid] = {"step": "ask_name"}
         bot.send_message(uid, "📋 Let’s set up a wholesale account. First, what’s your full name?")
         bot.answer_callback_query(call.id)
-
     elif call.data == "human":
         bot.send_message(
             OWNER_ID,
@@ -97,15 +98,14 @@ def callback_handler(call):
             f"User ID: `{uid}`",
             parse_mode="Markdown"
         )
-        bot.send_message(uid, "Thanks! I’ve notified [Phearun] and they’ll reply personally soon.")
+        bot.send_message(uid, "Thanks! I’ve notified [Your Name] and they’ll reply personally soon.")
         bot.answer_callback_query(call.id)
 
-# ---------- Wholesale form steps ----------
+# ---------- Wholesale form logic ----------
 def handle_wholesale_step(message):
     uid = message.chat.id
     state = user_state.get(uid)
     step = state["step"]
-
     if step == "ask_name":
         state["name"] = message.text.strip()
         state["step"] = "ask_company"
@@ -125,10 +125,10 @@ def handle_wholesale_step(message):
             f"{(' @' + message.from_user.username) if message.from_user.username else ''}"
         )
         bot.send_message(OWNER_ID, summary, parse_mode="Markdown")
-        bot.send_message(uid, "✅ Thank you! Your enquiry has been forwarded. [Phearun] will contact you shortly.")
+        bot.send_message(uid, "✅ Thank you! Your enquiry has been forwarded. [Your Name] will contact you shortly.")
         del user_state[uid]
 
-# ---------- Vercel serverless entry point ----------
+# ---------- Vercel webhook endpoint ----------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
