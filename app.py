@@ -37,14 +37,11 @@ def change_mode(message):
 
 @bot.message_handler(commands=['myid'])
 def get_my_id(message):
-    # Always reply, no matter who sends it, and log the attempt
-    print(f"DEBUG /myid received from {message.chat.id}")
+    import traceback
     try:
-        bot.reply_to(message, f"Your chat ID: `{message.chat.id}`", parse_mode="Markdown")
-        print("DEBUG /myid reply sent")
+        bot.reply_to(message, "test")
     except Exception as e:
-        print(f"DEBUG /myid error: {e}")
-
+        print("Full error:", traceback.format_exc())
 # ---------- Helper: process any incoming message ----------
 def process_message(message):
     uid = message.chat.id
