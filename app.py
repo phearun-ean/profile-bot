@@ -13,16 +13,6 @@ app = Flask(__name__)
 CURRENT_MODE = "business"
 user_state = {}
 
-# ---------- DEBUG: Echo ALL text messages (place first) ----------
-@bot.message_handler(func=lambda m: True, content_types=['text'])
-def echo_all(message):
-    print(f"DEBUG: Received message from {message.chat.id}: {message.text}")
-    try:
-        reply = bot.reply_to(message, f"Echo: {message.text}")
-        print(f"DEBUG: Reply sent, message_id={reply.message_id}")
-    except Exception as e:
-        print(f"DEBUG: Error sending reply: {e}")
-
 # ---------- Keyboards ----------
 def business_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
@@ -34,7 +24,7 @@ def business_keyboard():
     )
     return markup
 
-# ---------- Owner commands (temporarily overridden by echo, but we'll keep for later) ----------
+# ---------- Owner commands ----------
 @bot.message_handler(commands=['mode'])
 def change_mode(message):
     if message.chat.id != OWNER_ID:
@@ -49,9 +39,15 @@ def change_mode(message):
 def get_my_id(message):
     bot.reply_to(message, f"Your chat ID: `{message.chat.id}`", parse_mode="Markdown")
 
-# ---------- Helper ----------
+# ---------- Helper: process any incoming message ----------
 def process_message(message):
     uid = message.chat.id
+
+    # Ignore messages from yourself (the owner)
+    if uid == OWNER_ID:
+        return
+
+    # If the user is in the middle of a wholesale form
     if uid in user_state:
         handle_wholesale_step(message)
         return
@@ -59,7 +55,7 @@ def process_message(message):
     if CURRENT_MODE == "business":
         bot.send_message(
             uid,
-            "👋 *Welcome to [Your Name]’s Bird’s Nest Shop!*\n\n"
+            "👋 *Welcome to Bird’s Nest House!*\n\n"
             "I’m an automated assistant. How can I help you today?",
             parse_mode="Markdown",
             reply_markup=business_keyboard()
@@ -71,35 +67,40 @@ def process_message(message):
             "If it’s urgent, send a 🔥 and I’ll be notified."
         )
 
-# ---------- Normal message handler (disabled by echo for now) ----------
-# @bot.message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
-# def handle_normal_message(message):
-#     process_message(message)
+# ---------- Normal message handler (private chats) ----------
+@bot.message_handler(func=lambda m: True, content_types=['text'])
+def handle_normal_message(message):
+    process_message(message)
 
-# ---------- Business message handler (disabled by echo for now) ----------
-# @bot.business_message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
-# def handle_business_message(message):
-#     process_message(message)
+# ---------- Business message handler (Secretary Mode / profile) ----------
+@bot.business_message_handler(func=lambda m: True, content_types=['text'])
+def handle_business_message(message):
+    process_message(message)
 
-# ---------- Callback buttons ----------
+# ---------- Callback button handler ----------
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     uid = call.message.chat.id
+
     if call.data == "learn":
         bot.send_message(
             uid,
             "🍃 *Edible Bird’s Nest* is a premium superfood known for:\n"
-            "• Boosting immunity\n• Improving skin complexion\n• Supporting respiratory health\n\n"
+            "• Boosting immunity\n"
+            "• Improving skin complexion\n"
+            "• Supporting respiratory health\n\n"
             "All our nests are 100% natural, hand‑cleaned, and sourced sustainably.\n"
             "Ready to try? Tap *Buy Now* to visit our shop!",
             parse_mode="Markdown",
             reply_markup=business_keyboard()
         )
         bot.answer_callback_query(call.id)
+
     elif call.data == "wholesale":
         user_state[uid] = {"step": "ask_name"}
         bot.send_message(uid, "📋 Let’s set up a wholesale account. First, what’s your full name?")
         bot.answer_callback_query(call.id)
+
     elif call.data == "human":
         bot.send_message(
             OWNER_ID,
@@ -108,14 +109,15 @@ def callback_handler(call):
             f"User ID: `{uid}`",
             parse_mode="Markdown"
         )
-        bot.send_message(uid, "Thanks! I’ve notified [Your Name] and they’ll reply personally soon.")
+        bot.send_message(uid, "Thanks! I’ve notified [Phearun] and they’ll reply personally soon.")
         bot.answer_callback_query(call.id)
 
-# ---------- Wholesale form ----------
+# ---------- Wholesale form steps ----------
 def handle_wholesale_step(message):
     uid = message.chat.id
     state = user_state.get(uid)
     step = state["step"]
+
     if step == "ask_name":
         state["name"] = message.text.strip()
         state["step"] = "ask_company"
@@ -135,14 +137,13 @@ def handle_wholesale_step(message):
             f"{(' @' + message.from_user.username) if message.from_user.username else ''}"
         )
         bot.send_message(OWNER_ID, summary, parse_mode="Markdown")
-        bot.send_message(uid, "✅ Thank you! Your enquiry has been forwarded. [Your Name] will contact you shortly.")
+        bot.send_message(uid, "✅ Thank you! Your enquiry has been forwarded. [Phearun] will contact you shortly.")
         del user_state[uid]
 
 # ---------- Vercel webhook ----------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
-    print(f"DEBUG: Full update: {update}")
     bot.process_new_updates([update])
     return 'ok', 200
 
