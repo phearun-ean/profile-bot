@@ -13,6 +13,16 @@ app = Flask(__name__)
 CURRENT_MODE = "business"
 user_state = {}
 
+# ---------- DEBUG: Echo ALL text messages (place first) ----------
+@bot.message_handler(func=lambda m: True, content_types=['text'])
+def echo_all(message):
+    print(f"DEBUG: Received message from {message.chat.id}: {message.text}")
+    try:
+        reply = bot.reply_to(message, f"Echo: {message.text}")
+        print(f"DEBUG: Reply sent, message_id={reply.message_id}")
+    except Exception as e:
+        print(f"DEBUG: Error sending reply: {e}")
+
 # ---------- Keyboards ----------
 def business_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
@@ -24,7 +34,7 @@ def business_keyboard():
     )
     return markup
 
-# ---------- Owner commands ----------
+# ---------- Owner commands (temporarily overridden by echo, but we'll keep for later) ----------
 @bot.message_handler(commands=['mode'])
 def change_mode(message):
     if message.chat.id != OWNER_ID:
@@ -39,7 +49,7 @@ def change_mode(message):
 def get_my_id(message):
     bot.reply_to(message, f"Your chat ID: `{message.chat.id}`", parse_mode="Markdown")
 
-# ---------- Helper function: process any incoming message ----------
+# ---------- Helper ----------
 def process_message(message):
     uid = message.chat.id
     if uid in user_state:
@@ -61,17 +71,17 @@ def process_message(message):
             "If it’s urgent, send a 🔥 and I’ll be notified."
         )
 
-# ---------- Handler for normal private messages ----------
-@bot.message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
-def handle_normal_message(message):
-    process_message(message)
+# ---------- Normal message handler (disabled by echo for now) ----------
+# @bot.message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
+# def handle_normal_message(message):
+#     process_message(message)
 
-# ---------- Handler for messages from your profile (Secretary Mode) ----------
-@bot.business_message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
-def handle_business_message(message):
-    process_message(message)
+# ---------- Business message handler (disabled by echo for now) ----------
+# @bot.business_message_handler(func=lambda m: m.chat.id != OWNER_ID, content_types=['text'])
+# def handle_business_message(message):
+#     process_message(message)
 
-# ---------- Callback button handler ----------
+# ---------- Callback buttons ----------
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     uid = call.message.chat.id
@@ -101,7 +111,7 @@ def callback_handler(call):
         bot.send_message(uid, "Thanks! I’ve notified [Your Name] and they’ll reply personally soon.")
         bot.answer_callback_query(call.id)
 
-# ---------- Wholesale form logic ----------
+# ---------- Wholesale form ----------
 def handle_wholesale_step(message):
     uid = message.chat.id
     state = user_state.get(uid)
@@ -128,10 +138,11 @@ def handle_wholesale_step(message):
         bot.send_message(uid, "✅ Thank you! Your enquiry has been forwarded. [Your Name] will contact you shortly.")
         del user_state[uid]
 
-# ---------- Vercel webhook endpoint ----------
+# ---------- Vercel webhook ----------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
+    print(f"DEBUG: Full update: {update}")
     bot.process_new_updates([update])
     return 'ok', 200
 
