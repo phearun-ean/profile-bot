@@ -5,13 +5,13 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID", 0))
-BIRD_BOT_LINK = "https://t.me/bird_nest_house_bot"
+BIRD_BOT_LINK = "https://t.me/bird_nest_house_bot"   # your sales bot
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 CURRENT_MODE = "business"
-user_state = {}
+user_state = {}          # stores multi‑step wholesale form data
 
 # ---------- Keyboards ----------
 def business_keyboard():
@@ -37,20 +37,18 @@ def change_mode(message):
 
 @bot.message_handler(commands=['myid'])
 def get_my_id(message):
-    import traceback
-    try:
-        bot.reply_to(message, "test")
-    except Exception as e:
-        print("Full error:", traceback.format_exc())
-# ---------- Helper: process any incoming message ----------
+    # Always replies so you can get your chat ID
+    bot.reply_to(message, f"Your chat ID: `{message.chat.id}`", parse_mode="Markdown")
+
+# ---------- Core: process any incoming message ----------
 def process_message(message):
     uid = message.chat.id
 
-    # Ignore messages from yourself (the owner)
+    # Never auto‑reply to yourself
     if uid == OWNER_ID:
         return
 
-    # If the user is in the middle of a wholesale form
+    # Continue a multi‑step form if one is active
     if uid in user_state:
         handle_wholesale_step(message)
         return
@@ -70,17 +68,18 @@ def process_message(message):
             "If it’s urgent, send a 🔥 and I’ll be notified."
         )
 
-# ---------- Normal message handler (private chats) ----------
-@bot.message_handler(func=lambda m: True, content_types=['text'])
+# ---------- Message handlers ----------
+# Normal private messages (not starting with '/' to avoid eating commands)
+@bot.message_handler(func=lambda m: not m.text.startswith('/'), content_types=['text'])
 def handle_normal_message(message):
     process_message(message)
 
-# ---------- Business message handler (Secretary Mode / profile) ----------
-@bot.business_message_handler(func=lambda m: True, content_types=['text'])
+# Messages coming from your profile (Secretary Mode)
+@bot.business_message_handler(func=lambda m: not m.text.startswith('/'), content_types=['text'])
 def handle_business_message(message):
     process_message(message)
 
-# ---------- Callback button handler ----------
+# ---------- Inline button handling ----------
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
     uid = call.message.chat.id
@@ -105,6 +104,7 @@ def callback_handler(call):
         bot.answer_callback_query(call.id)
 
     elif call.data == "human":
+        # Notify you privately and reassure the user
         bot.send_message(
             OWNER_ID,
             f"📩 *Human reply requested* by {call.from_user.first_name}"
@@ -112,7 +112,7 @@ def callback_handler(call):
             f"User ID: `{uid}`",
             parse_mode="Markdown"
         )
-        bot.send_message(uid, "Thanks! I’ve notified [Phearun] and they’ll reply personally soon.")
+        bot.send_message(uid, "Thanks! I’ve notified the owner and they’ll reply personally soon.")
         bot.answer_callback_query(call.id)
 
 # ---------- Wholesale form steps ----------
@@ -140,10 +140,10 @@ def handle_wholesale_step(message):
             f"{(' @' + message.from_user.username) if message.from_user.username else ''}"
         )
         bot.send_message(OWNER_ID, summary, parse_mode="Markdown")
-        bot.send_message(uid, "✅ Thank you! Your enquiry has been forwarded. [Phearun] will contact you shortly.")
+        bot.send_message(uid, "✅ Thank you! Your enquiry has been forwarded. The owner will contact you shortly.")
         del user_state[uid]
 
-# ---------- Vercel webhook ----------
+# ---------- Flask routes for Render ----------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     update = telebot.types.Update.de_json(request.stream.read().decode('utf-8'))
@@ -153,3 +153,7 @@ def webhook():
 @app.route('/')
 def home():
     return 'Bot is running'
+
+# Only for local testing (ignored on Render because they use gunicorn)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
